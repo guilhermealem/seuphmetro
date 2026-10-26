@@ -1,0 +1,264 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Simulador de pHmetro</title>
+  <meta name="description" content="Simulador interativo de pHmetro de laboratório: calibração em 2 ou 3 pontos, compensação de temperatura, estabilização da leitura e diagnóstico do eletrodo.">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Share+Tech+Mono&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="css/style.css">
+</head>
+<body>
+  <header class="topbar">
+    <div class="brand">
+      <svg viewBox="0 0 24 24" width="28" height="28" aria-hidden="true"><path fill="currentColor" d="M9 2h6v2h-1v5.3l5.6 9.4A2 2 0 0 1 17.9 22H6.1a2 2 0 0 1-1.7-3.3L10 9.3V4H9V2Zm3 9.2L8.3 17h7.4L12 11.2Z"/></svg>
+      <div>
+        <h1>Simulador de pHmetro</h1>
+        <p class="subtitle">Eletrodo de vidro · equação de Nernst · calibração em 2/3 pontos</p>
+      </div>
+    </div>
+    <div class="topbar-actions">
+      <label class="speed">Velocidade
+        <select id="speed" aria-label="Velocidade da simulação">
+          <option value="1">1×</option>
+          <option value="2">2×</option>
+          <option value="5">5×</option>
+          <option value="10">10×</option>
+        </select>
+      </label>
+      <button id="btn-reset" class="btn btn-danger" type="button" title="Reinicia medidor, calibração e histórico">↺ Reiniciar simulação</button>
+    </div>
+  </header>
+
+  <main class="layout">
+    <!-- ================= INSTRUMENTO ================= -->
+    <section class="card instrument" aria-label="Instrumento">
+      <div class="meter" id="meter">
+        <div class="meter-head">
+          <span class="meter-brand">LAB·pH 3000</span>
+          <span class="meter-led" id="led" title="Indicador de estado"></span>
+        </div>
+
+        <div class="lcd" id="lcd" role="status" aria-live="polite">
+          <div class="lcd-row lcd-top">
+            <span class="lcd-tag" id="lcd-mode">MEAS</span>
+            <span class="lcd-tag" id="lcd-stab" title="Estabilidade">~</span>
+            <span class="lcd-bufs" id="lcd-bufs" title="Tampões da calibração ativa">
+              <span data-b="4">4</span><span data-b="7">7</span><span data-b="10">10</span>
+            </span>
+            <span class="lcd-electrode" id="lcd-electrode" title="Condição do eletrodo (última calibração)">
+              <svg viewBox="0 0 14 24" aria-hidden="true"><rect x="4" y="0" width="6" height="16" rx="1"/><circle cx="7" cy="19" r="4"/></svg>
+              <i></i><i></i><i></i>
+            </span>
+          </div>
+          <div class="lcd-main">
+            <span class="lcd-value" id="lcd-value">7.00</span>
+            <span class="lcd-unit" id="lcd-unit">pH</span>
+          </div>
+          <div class="lcd-row lcd-bottom">
+            <span id="lcd-temp">25.0 °C</span>
+            <span class="lcd-tag" id="lcd-atc">ATC</span>
+            <span class="lcd-err" id="lcd-err"></span>
+          </div>
+        </div>
+
+        <div class="meter-keys">
+          <button class="key" id="key-cal" type="button" title="Iniciar calibração">CAL</button>
+          <button class="key" id="key-mode" type="button" title="Alternar pH / mV">pH/mV</button>
+          <button class="key key-enter" id="key-enter" type="button" title="Confirmar ponto de calibração ou registrar leitura">READ<br><small>ENTER</small></button>
+          <button class="key" id="key-exit" type="button" title="Cancelar calibração">EXIT</button>
+        </div>
+        <p class="meter-msg" id="meter-msg" role="status" aria-live="polite"></p>
+      </div>
+
+      <!-- Bancada: béquer, eletrodo e sensor de temperatura -->
+      <div class="bench">
+        <svg id="bench-svg" viewBox="0 0 260 260" role="img" aria-label="Béquer com eletrodo de pH e sensor de temperatura">
+          <defs>
+            <linearGradient id="glass" x1="0" x2="1">
+              <stop offset="0" stop-color="#fff" stop-opacity=".55"/>
+              <stop offset=".5" stop-color="#fff" stop-opacity=".12"/>
+              <stop offset="1" stop-color="#fff" stop-opacity=".45"/>
+            </linearGradient>
+          </defs>
+          <!-- banho termostático -->
+          <rect x="30" y="200" width="200" height="40" rx="8" class="bath"/>
+          <text x="130" y="226" text-anchor="middle" class="bath-label" id="bath-label">25,0 °C</text>
+          <!-- eletrodo e sensor (se movem juntos) -->
+          <g id="probes" class="probes">
+            <rect x="96" y="-20" width="8" height="40" class="cable"/>
+            <rect x="92" y="20" width="16" height="132" rx="4" class="electrode-body"/>
+            <rect x="94" y="60" width="12" height="60" rx="2" class="electrolyte"/>
+            <circle cx="100" cy="128" r="1.6" class="junction"/>
+            <ellipse cx="100" cy="160" rx="10" ry="12" class="bulb"/>
+            <rect x="152" y="-20" width="4" height="40" class="cable"/>
+            <rect x="150" y="20" width="8" height="140" rx="3" class="tprobe"/>
+            <text x="100" y="45" text-anchor="middle" class="probe-label">pH</text>
+            <text x="154" y="45" text-anchor="middle" class="probe-label">T</text>
+          </g>
+          <!-- béquer -->
+          <g id="beaker">
+            <path id="liquid" d="M63 120 H197 V188 a8 8 0 0 1 -8 8 H71 a8 8 0 0 1 -8 -8 Z" class="liquid"/>
+            <path d="M58 70 H202 M63 70 V188 a8 8 0 0 0 8 8 H189 a8 8 0 0 0 8 -8 V70" class="beaker-outline"/>
+            <rect x="63" y="70" width="134" height="126" fill="url(#glass)" opacity=".5"/>
+            <g class="graduation"><path d="M180 100 h10 M184 120 h6 M180 140 h10 M184 160 h6 M180 180 h10"/></g>
+          </g>
+        </svg>
+        <div class="bench-caption">
+          <strong id="bench-sample">Tampão pH 7,00</strong>
+          <span id="bench-source" class="badge">Tabela do tampão</span>
+        </div>
+      </div>
+    </section>
+
+    <!-- ================= CONTROLES ================= -->
+    <section class="card controls" aria-label="Controles">
+      <h2>Amostra e condições</h2>
+      <div class="field">
+        <label for="sel-solution">Solução no béquer</label>
+        <select id="sel-solution"></select>
+        <p class="hint" id="solution-desc"></p>
+      </div>
+      <div class="field">
+        <label for="rng-temp">Temperatura da amostra (banho): <output id="out-temp">25,0 °C</output></label>
+        <input type="range" id="rng-temp" min="0" max="50" step="0.5" value="25">
+      </div>
+      <div class="field-row">
+        <fieldset class="field">
+          <legend>Compensação de temperatura</legend>
+          <label class="radio"><input type="radio" name="tmode" value="ATC" checked> ATC (sensor)</label>
+          <label class="radio"><input type="radio" name="tmode" value="MTC"> Manual</label>
+        </fieldset>
+        <div class="field">
+          <label for="num-manual">Temp. manual (°C)</label>
+          <input type="number" id="num-manual" min="0" max="50" step="0.1" value="25" disabled>
+        </div>
+      </div>
+      <div class="field">
+        <label for="sel-electrode">Condição do eletrodo</label>
+        <select id="sel-electrode"></select>
+        <p class="hint">Parâmetros didáticos do simulador (ver documentação).</p>
+      </div>
+
+      <h2>Calibração</h2>
+      <div class="field-row">
+        <div class="field">
+          <label for="sel-calpoints">Pontos</label>
+          <select id="sel-calpoints">
+            <option value="4,7,10">3 pts: 4/7/10</option>
+            <option value="4,7">2 pts: 4/7</option>
+            <option value="7,10">2 pts: 7/10</option>
+            <option value="4,10">2 pts: 4/10</option>
+          </select>
+        </div>
+        <div class="field">
+          <label for="sel-calmethod">Método</label>
+          <select id="sel-calmethod">
+            <option value="linear">Linear (regressão)</option>
+            <option value="segmented">Segmentada (3 pts)</option>
+          </select>
+        </div>
+      </div>
+      <div class="cal-wizard" id="cal-wizard" hidden>
+        <ol class="cal-steps" id="cal-steps"></ol>
+        <div class="btn-row">
+          <button class="btn" id="btn-cal-insert" type="button">Colocar no próximo tampão</button>
+          <button class="btn btn-primary" id="btn-cal-confirm" type="button">Confirmar ponto</button>
+          <button class="btn btn-ghost" id="btn-cal-cancel" type="button">Cancelar</button>
+        </div>
+      </div>
+      <div class="btn-row" id="cal-start-row">
+        <button class="btn btn-primary" id="btn-cal-start" type="button">Iniciar calibração</button>
+      </div>
+      <div class="cal-report" id="cal-report"></div>
+    </section>
+
+    <!-- ================= STATUS ================= -->
+    <section class="card status" aria-label="Status e diagnóstico">
+      <h2>Status da medição</h2>
+      <dl class="status-grid">
+        <div><dt>Leitura</dt><dd id="st-reading">—</dd></div>
+        <div><dt>Potencial</dt><dd id="st-mv">—</dd></div>
+        <div><dt>Estabilidade</dt><dd><span id="st-stab" class="pill">—</span></dd></div>
+        <div><dt>Calibração</dt><dd><span id="st-cal" class="pill">—</span></dd></div>
+        <div><dt>T amostra</dt><dd id="st-tsample">—</dd></div>
+        <div><dt>T medidor</dt><dd id="st-tmeter">—</dd></div>
+      </dl>
+      <div class="stab-bar" aria-hidden="true"><div id="stab-fill"></div></div>
+      <h3>Diagnóstico</h3>
+      <ul class="diag" id="diag"></ul>
+      <details class="truth">
+        <summary>Painel do instrutor (o medidor não sabe isto)</summary>
+        <dl class="status-grid">
+          <div><dt>pH de referência</dt><dd id="tr-ph">—</dd></div>
+          <div><dt>Origem do valor</dt><dd id="tr-src">—</dd></div>
+          <div><dt>Erro da leitura</dt><dd id="tr-err">—</dd></div>
+          <div><dt>Nernst S(T)</dt><dd id="tr-slope">—</dd></div>
+        </dl>
+      </details>
+    </section>
+
+    <!-- ================= HISTÓRICO ================= -->
+    <section class="card history" aria-label="Histórico de medições">
+      <div class="history-head">
+        <h2>Histórico de medições</h2>
+        <div class="btn-row">
+          <button class="btn btn-primary" id="btn-record" type="button">Registrar leitura</button>
+          <button class="btn" id="btn-csv" type="button">Exportar CSV</button>
+          <button class="btn btn-ghost" id="btn-clear" type="button">Limpar</button>
+        </div>
+      </div>
+      <div class="table-wrap">
+        <table id="history-table">
+          <thead>
+            <tr>
+              <th>#</th><th>Tempo (s)</th><th>Amostra</th><th>pH</th><th>mV</th><th>T (°C)</th>
+              <th>Comp.</th><th>Estab.</th><th>Calibração</th><th>Ref. (simulador)</th><th>Alertas</th>
+            </tr>
+          </thead>
+          <tbody id="history-body"></tbody>
+        </table>
+        <p class="empty" id="history-empty">Nenhuma leitura registrada. Use <b>Registrar leitura</b> ou a tecla <b>READ</b>.</p>
+      </div>
+    </section>
+
+    <!-- ================= MODELO ================= -->
+    <section class="card model" aria-label="Modelo físico-químico">
+      <h2>Modelo físico-químico e hipóteses</h2>
+      <div class="model-grid">
+        <div>
+          <h3>Eletrodo (Nernst)</h3>
+          <p class="formula">E = E<sub>0</sub> − k · S(T) · (pH − 7)</p>
+          <p class="formula">S(T) = R·T·ln10 / F ≈ 0,19842 · T(K) mV/pH</p>
+          <p>Ponto isopotencial ideal em pH 7. A compensação de temperatura (ATC/MTC) corrige apenas S(T), não a variação real do pH da amostra.</p>
+        </div>
+        <div>
+          <h3>Calibração</h3>
+          <p class="formula">pH = 7 + (E<sub>0</sub> − E) / (k · S(T))</p>
+          <p>k (inclinação, %) e E<sub>0</sub> (offset, mV) por mínimos quadrados; segmentada usa uma reta por par de tampões. Critérios típicos: bom 95–105 % e |E<sub>0</sub>| ≤ 15 mV; rejeita &lt; 90 % ou |E<sub>0</sub>| &gt; 35 mV.</p>
+        </div>
+        <div>
+          <h3>Amostras</h3>
+          <p>Calculadas por balanço de carga com atividades (Davies), K<sub>w</sub>(T) tabelado e pK<sub>a</sub>(T) por van 't Hoff. Erro alcalino por Nikolsky–Eisenman.</p>
+          <p><span class="badge badge-didactic">Valor didático</span> = valor ilustrativo fixo, sem modelo químico.</p>
+        </div>
+        <div>
+          <h3>Dinâmica</h3>
+          <p class="formula">E(t+Δt) = E<sub>∞</sub> + (E(t) − E<sub>∞</sub>)·e<sup>−Δt/τ</sup></p>
+          <p>Estável quando a variação em 5 s &lt; 0,6 mV (≈ 0,01 pH). τ, ruído e deriva são parâmetros didáticos.</p>
+        </div>
+      </div>
+      <p class="hint">Documentação completa em <code>docs/MODELO.md</code>.</p>
+    </section>
+  </main>
+
+  <footer class="footer">Simulador educacional — não substitui procedimentos operacionais padrão nem certificados de tampões.</footer>
+
+  <script src="js/chem.js"></script>
+  <script src="js/solutions.js"></script>
+  <script src="js/meter.js"></script>
+  <script src="js/ui.js"></script>
+</body>
+</html>
